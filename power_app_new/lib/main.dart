@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:fl_chart/fl_chart.dart';
 
 void main() {
   runApp(const PowerApp());
@@ -11,14 +12,9 @@ class PowerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Power Lottery AI',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.red,
-      ),
-      home: const HomePage(),
+      home: HomePage(),
     );
   }
 }
@@ -32,101 +28,108 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String strategy = "ai";
+  bool loading = false;
 
   List<int> firstZone = [];
   int secondZone = 0;
 
-  bool loading = false;
+  List stats = [];
+
+  final String baseUrl = "https://power-lottery-ai.onrender.com";
+
+  @override
+  void initState() {
+    super.initState();
+    fetchStats(); // ⭐ 一進畫面就自動載入統計圖表
+  }
 
   Future<void> fetchPrediction() async {
     setState(() => loading = true);
 
-    final url = Uri.parse(
-      "https://power-lottery-ai.onrender.com/predict?strategy=$strategy",
+    final res = await http.get(
+      Uri.parse("$baseUrl/predict?strategy=$strategy"),
     );
 
-    try {
-      final res = await http.get(url);
+    final data = jsonDecode(res.body);
 
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-
-        setState(() {
-          firstZone = List<int>.from(data["first_zone"]);
-          secondZone = data["second_zone"];
-        });
-      }
-    } catch (e) {
-      debugPrint("連線錯誤: $e");
-    }
-
-    setState(() => loading = false);
+    setState(() {
+      firstZone = List<int>.from(data["first_zone"]);
+      secondZone = data["second_zone"];
+      loading = false;
+    });
   }
 
-  Widget ball(int num, Color color) {
-    return Container(
-      width: 55,
-      height: 55,
-      margin: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 6,
-            offset: Offset(2, 3),
+  Future<void> fetchStats() async {
+    final res = await http.get(
+      Uri.parse("$baseUrl/stats"),
+    );
+
+    setState(() {
+      stats = jsonDecode(res.body);
+    });
+  }
+
+  Widget ball(int n, Color c) => Container(
+        width: 48,
+        height: 48,
+        margin: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: c,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          "$n",
+          style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold),
+        ),
+      );
+
+  List<BarChartGroupData> buildBars() {
+    return stats.map<BarChartGroupData>((e) {
+      return BarChartGroupData(
+        x: e["num"],
+        barRods: [
+          BarChartRodData(
+            toY: (e["count"] as num).toDouble(),
+            width: 6,
+            color: Colors.deepPurple,
           )
         ],
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        "$num",
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
+      );
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff6eef4),
-      appBar: AppBar(
-        title: const Text("🎯 威力彩 AI 分析系統"),
-        centerTitle: true,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(18),
+      appBar: AppBar(title: const Text("🎯 威力彩 AI 分析系統")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(14),
         child: Column(
           children: [
-            DropdownButton<String>(
+            DropdownButton(
               value: strategy,
               items: const [
-                DropdownMenuItem(value: "ai", child: Text("🧠 AI 權重")),
-                DropdownMenuItem(value: "hot", child: Text("🔥 熱號策略")),
-                DropdownMenuItem(value: "cold", child: Text("❄ 冷號策略")),
-                DropdownMenuItem(value: "random", child: Text("🎲 完全隨機")),
+                DropdownMenuItem(value: "ai", child: Text("🧠 AI")),
+                DropdownMenuItem(value: "hot", child: Text("🔥 熱號")),
+                DropdownMenuItem(value: "cold", child: Text("❄ 冷號")),
+                DropdownMenuItem(value: "random", child: Text("🎲 隨機")),
               ],
               onChanged: (v) => setState(() => strategy = v!),
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 12),
 
             ElevatedButton(
               onPressed: loading ? null : fetchPrediction,
-              style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-              ),
               child: loading
                   ? const CircularProgressIndicator()
                   : const Text("開始計算"),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 18),
 
             Wrap(
               alignment: WrapAlignment.center,
@@ -135,9 +138,41 @@ class _HomePageState extends State<HomePage> {
             ),
 
             if (secondZone != 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 18),
-                child: ball(secondZone, Colors.blue),
+              ball(secondZone, Colors.blue),
+
+            const SizedBox(height: 30),
+
+            const Text("📊 歷史數據統計圖",
+                style: TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)),
+
+            const SizedBox(height: 12),
+
+            if (stats.isNotEmpty)
+              SizedBox(
+                height: 280,
+                child: BarChart(
+                  BarChartData(
+                    barGroups: buildBars(),
+                    gridData: FlGridData(show: true),
+                    borderData: FlBorderData(show: true),
+                    titlesData: FlTitlesData(
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          interval: 5,
+                          getTitlesWidget: (v, _) =>
+                              Text(v.toInt().toString(),
+                                  style: const TextStyle(fontSize: 10)),
+                        ),
+                      ),
+                      leftTitles: AxisTitles(
+                        sideTitles:
+                            SideTitles(showTitles: true),
+                      ),
+                    ),
+                  ),
+                ),
               ),
           ],
         ),
