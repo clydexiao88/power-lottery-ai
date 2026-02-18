@@ -1,3 +1,40 @@
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+
+def auto_update_data():
+    try:
+        url = "https://www.taiwanlottery.com.tw/lotto/powerlotto/history.aspx"
+        headers = {"User-Agent": "Mozilla/5.0"}
+
+        res = requests.get(url, headers=headers, timeout=20)
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        table = soup.find("table")
+        rows = []
+
+        for tr in table.find_all("tr")[1:]:
+            tds = tr.find_all("td")
+            if len(tds) < 10:
+                continue
+            try:
+                nums = [int(tds[i].text.strip()) for i in range(3,9)]
+                second = int(tds[9].text.strip())
+                rows.append(nums + [second])
+            except:
+                continue
+
+        df = pd.DataFrame(
+            rows,
+            columns=["n1","n2","n3","n4","n5","n6","second"]
+        )
+
+        df.to_csv("weli_latest.csv", index=False)
+        print("☁ 雲端資料已更新，共", len(df), "筆")
+
+    except Exception as e:
+        print("資料更新失敗:", e)
+
 from flask import Flask, jsonify, request
 import csv
 import random
@@ -122,7 +159,7 @@ def stats():
 
 
 # ---------- Run ----------
-
+auto_update_data()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
