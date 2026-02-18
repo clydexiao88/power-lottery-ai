@@ -59,35 +59,37 @@ def model_predict(strategy):
     history = load_numbers()
     counter = Counter(history)
 
-    scores = {}
-
-    for n in range(1, 39):
-        freq = counter.get(n, 0)
-
-        if strategy == "hot":
-            scores[n] = freq
-
-        elif strategy == "cold":
-            scores[n] = 1 / (freq + 1)
-
-        elif strategy == "ai":
-            scores[n] = freq * 0.7 + random.random() * 0.3
-
     if strategy == "random":
         first_zone = sorted(random.sample(range(1, 39), 6))
-    else:
-        probs = softmax(scores)
 
-        # 防呆：如果機率全掛 → fallback
-        if not probs:
-            first_zone = sorted(random.sample(range(1, 39), 6))
-        else:
-            first_zone = weighted_sample(probs, 6)
+    elif strategy == "hot":
+        ranked = counter.most_common(20)
+        pool = [n for n, _ in ranked]
+        first_zone = sorted(random.sample(pool, 6))
+
+    elif strategy == "cold":
+        cold = sorted(counter.items(), key=lambda x: x[1])[:20]
+        pool = [n for n, _ in cold]
+        first_zone = sorted(random.sample(pool, 6))
+
+    else:  # AI 機率模型（穩定版）
+        weights = []
+        nums = list(range(1, 39))
+
+        for n in nums:
+            weights.append(counter.get(n, 0) + 1)  # +1 防止歸零
+
+        first_zone = sorted(random.choices(nums, weights=weights, k=6))
+        first_zone = list(set(first_zone))
+
+        while len(first_zone) < 6:
+            first_zone.append(random.choice(nums))
+
+        first_zone = sorted(first_zone)
 
     second_zone = random.randint(1, 8)
 
     return first_zone, second_zone
-
 
 # ---------- API ----------
 
