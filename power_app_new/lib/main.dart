@@ -39,8 +39,10 @@ class _HomePageState extends State<HomePage> {
     try {
       setState(() => loading = true);
 
-      final url =
-          Uri.parse("http://192.168.1.107:5000/predict?strategy=$strategy");
+      final url = Uri.parse(
+  "https://power-lottery-ai.onrender.com/predict?strategy=$strategy"
+);
+
       final res = await http.get(url);
       final data = jsonDecode(res.body);
 
@@ -58,7 +60,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> fetchStats() async {
     try {
-      final url = Uri.parse("http://192.168.1.107:5000/stats");
+      final url = Uri.parse(
+  "https://power-lottery-ai.onrender.com/predict?strategy=$strategy"
+);
+
       final res = await http.get(url);
       final data = jsonDecode(res.body);
 
