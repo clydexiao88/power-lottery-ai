@@ -14,7 +14,7 @@ def update_data():
     try:
         print("📡 嘗試同步穩定資料源...")
 
-        url = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/master/data/powerlotto.csv"
+       url = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/master/data/powerlotto.csv"
         df = pd.read_csv(url)
 
         df = df[[
