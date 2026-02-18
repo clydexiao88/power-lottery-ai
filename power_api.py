@@ -1,13 +1,21 @@
-import requests
+from flask import Flask, jsonify, request
 import pandas as pd
-from bs4 import BeautifulSoup
-OFFICIAL_CSV = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/master/powerlotto.csv"
-LOCAL_FILE = "weli_latest.csv"
+import random
+from collections import Counter
 
+app = Flask(__name__)
+
+DATA_FILE = "weli_latest.csv"
+
+# ==========================
+# 🔄 自動更新資料
+# ==========================
 def update_data():
     try:
-         print("📡 嘗試官方鏡像資料源...")
-        df = pd.read_csv(OFFICIAL_CSV)
+        print("📡 嘗試同步穩定資料源...")
+
+        url = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/master/powerlotto.csv"
+        df = pd.read_csv(url)
 
         df = df[[
             "draw_date",
@@ -18,138 +26,74 @@ def update_data():
             "date","獎號1","獎號2","獎號3","獎號4","獎號5","獎號6","第二區"
         ]
 
-        df.to_csv(LOCAL_FILE, index=False)
+        df.to_csv(DATA_FILE, index=False)
+
         print(f"✅ 成功更新 {len(df)} 期資料")
 
     except Exception as e:
         print("❌ 更新失敗:", e)
 
-
-from flask import Flask, jsonify, request
-import csv
-import random
-from collections import Counter
-import math
-import os
-
-app = Flask(__name__)
-
-CSV_FILE =  "weli_latest.csv"
-
-# ---------- Load CSV ----------
-
+# ==========================
+# 📊 讀取號碼
+# ==========================
 def load_numbers():
-    nums = []
-    with open(CSV_FILE, newline='', encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            for i in range(1, 7):
-                nums.append(int(row[f"獎號{i}"]))
+    df = pd.read_csv(DATA_FILE)
+    nums = df[["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6"]].values.flatten()
     return nums
 
-
-# ---------- Softmax with safety ----------
-
-def softmax(scores):
-    if not scores:
-        return {}
-
-    max_score = max(scores.values())
-    exp_scores = {k: math.exp(v - max_score) for k, v in scores.items()}
-    total = sum(exp_scores.values())
-
-    if total == 0:
-        return {}
-
-    return {k: v / total for k, v in exp_scores.items()}
-
-
-# ---------- Weighted pick ----------
-
-def weighted_sample(prob_map, k):
-    if not prob_map:
-        return random.sample(range(1, 39), k)
-
-    nums = list(prob_map.keys())
-    weights = list(prob_map.values())
-
-    chosen = set()
-    while len(chosen) < k:
-        chosen.add(random.choices(nums, weights=weights)[0])
-
-    return sorted(chosen)
-
-
-# ---------- Prediction logic ----------
-
-def model_predict(strategy):
-    history = load_numbers()
-    counter = Counter(history)
-
-    if strategy == "random":
-        first_zone = sorted(random.sample(range(1, 39), 6))
-
-    elif strategy == "hot":
-        ranked = counter.most_common(20)
-        pool = [n for n, _ in ranked]
-        first_zone = sorted(random.sample(pool, 6))
-
-    elif strategy == "cold":
-        cold = sorted(counter.items(), key=lambda x: x[1])[:20]
-        pool = [n for n, _ in cold]
-        first_zone = sorted(random.sample(pool, 6))
-
-    else:  # AI 機率模型（穩定版）
-        weights = []
-        nums = list(range(1, 39))
-
-        for n in nums:
-            weights.append(counter.get(n, 0) + 1)  # +1 防止歸零
-
-        first_zone = sorted(random.choices(nums, weights=weights, k=6))
-        first_zone = list(set(first_zone))
-
-        while len(first_zone) < 6:
-            first_zone.append(random.choice(nums))
-
-        first_zone = sorted(first_zone)
-
-    second_zone = random.randint(1, 8)
-
-    return first_zone, second_zone
-
-# ---------- API ----------
-
-@app.route("/")
-def home():
-    return "Power Lottery AI API running with real CSV data"
-
-
+# ==========================
+# 🎯 預測
+# ==========================
 @app.route("/predict")
 def predict():
-    strategy = request.args.get("strategy", "ai")
+    strategy = request.args.get("strategy", "random")
 
-    first, second = model_predict(strategy)
+    nums = load_numbers()
+    counter = Counter(nums)
+
+    if strategy == "hot":
+        sorted_nums = sorted(counter.items(), key=lambda x: x[1], reverse=True)
+        picks = [n for n, _ in sorted_nums[:6]]
+
+    elif strategy == "cold":
+        sorted_nums = sorted(counter.items(), key=lambda x: x[1])
+        picks = [n for n, _ in sorted_nums[:6]]
+
+    else:
+        picks = random.sample(range(1,39),6)
+
+    picks.sort()
+    special = random.randint(1,8)
 
     return jsonify({
-        "first_zone": first,
-        "second_zone": second
+        "first_zone": picks,
+        "second_zone": special
     })
 
-
+# ==========================
+# 📊 統計
+# ==========================
 @app.route("/stats")
 def stats():
     nums = load_numbers()
     counter = Counter(nums)
 
-    return jsonify([
-        {"num": i, "count": counter.get(i, 0)}
-        for i in range(1, 39)
-    ])
+    result = []
+    for i in range(1,39):
+        result.append({
+            "num": i,
+            "count": counter.get(i, 0)
+        })
 
+    return jsonify(result)
 
-# ---------- Run ----------
-auto_update_data()
+@app.route("/")
+def home():
+    return "Power Lottery AI API running with stable data source"
+
+# ==========================
+# 🚀 啟動
+# ==========================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    update_data()
+    app.run(host="0.0.0.0", port=10000)
