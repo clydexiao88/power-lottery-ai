@@ -8,32 +8,46 @@ def auto_update_data():
         headers = {"User-Agent": "Mozilla/5.0"}
 
         res = requests.get(url, headers=headers, timeout=20)
-        soup = BeautifulSoup(res.text, "html.parser")
+        res.encoding = "utf-8"
 
+        soup = BeautifulSoup(res.text, "html.parser")
         table = soup.find("table")
+
+        if not table:
+            print("⚠ 官方頁面改版，暫時沿用舊資料")
+            return
+
         rows = []
 
         for tr in table.find_all("tr")[1:]:
             tds = tr.find_all("td")
             if len(tds) < 10:
                 continue
-            try:
-                nums = [int(tds[i].text.strip()) for i in range(3,9)]
-                second = int(tds[9].text.strip())
-                rows.append(nums + [second])
-            except:
+
+            nums = []
+            for i in range(3, 9):
+                if tds[i].text.strip().isdigit():
+                    nums.append(int(tds[i].text.strip()))
+
+            if len(nums) != 6:
                 continue
 
-        df = pd.DataFrame(
-            rows,
-            columns=["n1","n2","n3","n4","n5","n6","second"]
-        )
+            second = int(tds[9].text.strip())
+            rows.append(nums + [second])
 
-        df.to_csv("weli_latest.csv", index=False)
-        print("☁ 雲端資料已更新，共", len(df), "筆")
+        if rows:
+            df = pd.DataFrame(
+                rows,
+                columns=["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6","第二區"]
+            )
+            df.to_csv("weli_latest.csv", index=False)
+            print("✅ 最新資料更新完成:", len(df), "期")
+        else:
+            print("⚠ 沒抓到新資料，保留舊CSV")
 
     except Exception as e:
-        print("資料更新失敗:", e)
+        print("⚠ 更新失敗，使用舊資料:", e)
+
 
 from flask import Flask, jsonify, request
 import csv
@@ -44,7 +58,7 @@ import os
 
 app = Flask(__name__)
 
-CSV_FILE = "weli_20260.csv"
+CSV_FILE =  "weli_latest.csv"
 
 # ---------- Load CSV ----------
 
