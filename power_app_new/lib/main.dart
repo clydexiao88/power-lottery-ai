@@ -12,9 +12,9 @@ class PowerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: HomePage(),
+      home: const HomePage(),
     );
   }
 }
@@ -28,201 +28,130 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String strategy = "ai";
-
-  List<int> firstZone = [];
-  int? secondZone;
+  List<int> numbers = [];
+  int second = 0;
+  List stats = [];
   bool loading = false;
 
-  List<Map<String, dynamic>> stats = [];
+  final baseUrl = "https://power-lottery-ai.onrender.com";
 
-  Future<void> fetchPrediction() async {
-    try {
-      setState(() => loading = true);
+  Future<void> fetchPredict() async {
+    setState(() => loading = true);
 
-      final url = Uri.parse(
-  "https://power-lottery-ai.onrender.com/predict?strategy=$strategy"
-);
+    final res = await http.get(
+      Uri.parse("$baseUrl/predict?strategy=$strategy"),
+    );
 
-      final res = await http.get(url);
-      final data = jsonDecode(res.body);
+    final data = jsonDecode(res.body);
 
-      setState(() {
-        firstZone = List<int>.from(data["first_zone"]);
-        secondZone = data["second_zone"];
-        loading = false;
-      });
-    } catch (e) {
-      setState(() => loading = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("連線錯誤：$e")));
-    }
+    setState(() {
+      numbers = List<int>.from(data["first_zone"]);
+      second = data["second_zone"];
+      loading = false;
+    });
   }
 
   Future<void> fetchStats() async {
-    try {
-      final url = Uri.parse(
-  "https://power-lottery-ai.onrender.com/predict?strategy=$strategy"
-);
-
-      final res = await http.get(url);
-      final data = jsonDecode(res.body);
-
-      setState(() {
-        stats = List<Map<String, dynamic>>.from(data);
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("統計讀取失敗：$e")));
-    }
+    final res = await http.get(Uri.parse("$baseUrl/stats"));
+    stats = jsonDecode(res.body);
+    setState(() {});
   }
 
-  Widget ball(int num, {Color color = Colors.red}) {
-    return Container(
-      margin: const EdgeInsets.all(6),
-      width: 48,
-      height: 48,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 6),
-        ],
-      ),
-      child: Text(
-        num.toString(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
+  Widget ball(int n, Color c) => Container(
+        margin: const EdgeInsets.all(6),
+        width: 55,
+        height: 55,
+        decoration: BoxDecoration(
+          color: c,
+          shape: BoxShape.circle,
         ),
-      ),
-    );
-  }
-
-  Widget statsChart(List<Map<String, dynamic>> data) {
-    if (data.isEmpty) return const SizedBox();
-
-    int maxCount =
-        data.map((e) => e["count"] as int).reduce((a, b) => a > b ? a : b);
-
-    return SizedBox(
-      height: 320,
-      child: BarChart(
-        BarChartData(
-          maxY: maxCount.toDouble() + 1,
-
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                getTitlesWidget: (value, meta) {
-                  return Text(
-                    value.toInt().toString(),
-                    style: const TextStyle(fontSize: 10),
-                  );
-                },
-              ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 3,
-                getTitlesWidget: (value, meta) {
-                  return Text(
-                    value.toInt().toString(),
-                    style: const TextStyle(fontSize: 8),
-                  );
-                },
-              ),
-            ),
-            rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-
-          borderData: FlBorderData(show: false),
-
-          barGroups: data.map((e) {
-            int c = e["count"];
-
-            Color color = c > maxCount * 0.7
-                ? Colors.red
-                : c < maxCount * 0.3
-                    ? Colors.blue
-                    : Colors.orange;
-
-            return BarChartGroupData(
-              x: e["num"],
-              barRods: [
-                BarChartRodData(
-                  toY: c.toDouble(),
-                  width: 6,
-                  color: color,
-                  borderRadius: BorderRadius.circular(4),
-                )
-              ],
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
+        child: Center(
+            child: Text("$n",
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold))),
+      );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("🎯 威力彩 AI 分析系統")),
       body: SingleChildScrollView(
-        child: Center(
-          child: Column(
-            children: [
-              const SizedBox(height: 20),
-
-              DropdownButton<String>(
-                value: strategy,
-                items: const [
-                  DropdownMenuItem(value: "ai", child: Text("🧠 AI權重")),
-                  DropdownMenuItem(value: "hot", child: Text("🔥 熱號策略")),
-                  DropdownMenuItem(value: "cold", child: Text("🧊 冷號策略")),
-                  DropdownMenuItem(value: "random", child: Text("🎲 完全隨機")),
-                ],
-                onChanged: (v) => setState(() => strategy = v!),
-              ),
-
-              ElevatedButton(
-                onPressed: loading ? null : fetchPrediction,
-                child: const Text("開始計算"),
-              ),
-
-              ElevatedButton(
-                onPressed: fetchStats,
-                child: const Text("📊 查看統計分析"),
-              ),
-
-              const SizedBox(height: 20),
-
-              if (loading) const CircularProgressIndicator(),
-
-              if (firstZone.isNotEmpty) ...[
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  children: firstZone.map((n) => ball(n)).toList(),
-                ),
-                const SizedBox(height: 12),
-                if (secondZone != null)
-                  ball(secondZone!, color: Colors.blue),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            DropdownButton(
+              value: strategy,
+              items: const [
+                DropdownMenuItem(value: "ai", child: Text("🧠 AI權重")),
+                DropdownMenuItem(value: "hot", child: Text("🔥 熱號")),
+                DropdownMenuItem(value: "cold", child: Text("❄ 冷號")),
+                DropdownMenuItem(value: "random", child: Text("🎲 隨機")),
               ],
+              onChanged: (v) => setState(() => strategy = v!),
+            ),
 
-              const SizedBox(height: 20),
+            const SizedBox(height: 10),
 
-              if (stats.isNotEmpty) statsChart(stats),
+            ElevatedButton(
+              onPressed: loading ? null : fetchPredict,
+              child: const Text("開始計算"),
+            ),
 
-              const SizedBox(height: 30),
-            ],
-          ),
+            const SizedBox(height: 20),
+
+            Wrap(
+              alignment: WrapAlignment.center,
+              children:
+                  numbers.map((n) => ball(n, Colors.red)).toList(),
+            ),
+
+            if (second != 0) ball(second, Colors.blue),
+
+            const SizedBox(height: 30),
+
+            ElevatedButton(
+              onPressed: fetchStats,
+              child: const Text("📊 查看統計分析"),
+            ),
+
+            const SizedBox(height: 20),
+
+            if (stats.isNotEmpty)
+              SizedBox(
+                height: 300,
+                child: BarChart(
+                  BarChartData(
+                    barGroups: stats.map<BarChartGroupData>((e) {
+                      return BarChartGroupData(
+                        x: e["num"],
+                        barRods: [
+                          BarChartRodData(
+                            toY: e["count"].toDouble(),
+                            width: 5,
+                            color: Colors.deepPurple,
+                          )
+                        ],
+                      );
+                    }).toList(),
+                    titlesData: FlTitlesData(
+                      leftTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: true)),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          interval: 5,
+                          getTitlesWidget: (v, _) =>
+                              Text(v.toInt().toString(),
+                                  style: const TextStyle(fontSize: 10)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
