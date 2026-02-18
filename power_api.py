@@ -1,36 +1,41 @@
 from flask import Flask, jsonify, request
 import pandas as pd
-import requests
 import random
 from collections import Counter
+import requests
+import io
 
 app = Flask(__name__)
 
 DATA_FILE = "weli_latest.csv"
 
-# ============================
-# 🔄 從官方 API 同步資料
-# ============================
+# =========================
+# 🔄 政府開放資料更新
+# =========================
 
 def update_data():
     try:
-        print("📡 同步穩定歷史資料庫...")
+        print("📡 從政府開放資料更新...")
 
-        url = "https://raw.githubusercontent.com/kiang/taiwan-lottery-history/master/data/powerlotto.csv"
-        df = pd.read_csv(url)
+        csv_url = "https://quality.data.gov.tw/dq_download_csv.php?nid=5961&md5_url=2d1b3cfa0a3c07c9e3db2b04df5f7d6d"
+
+        res = requests.get(csv_url, timeout=20)
+        res.raise_for_status()
+
+        df = pd.read_csv(io.StringIO(res.text))
 
         df = df.rename(columns={
-            "n1": "獎號1",
-            "n2": "獎號2",
-            "n3": "獎號3",
-            "n4": "獎號4",
-            "n5": "獎號5",
-            "n6": "獎號6",
-            "sp": "第二區"
+            "獎號1": "獎號1",
+            "獎號2": "獎號2",
+            "獎號3": "獎號3",
+            "獎號4": "獎號4",
+            "獎號5": "獎號5",
+            "獎號6": "獎號6",
+            "第二區": "第二區"
         })
 
         df[["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6","第二區"]].to_csv(
-            "weli_latest.csv", index=False
+            DATA_FILE, index=False
         )
 
         print("✅ 成功更新", len(df), "期")
@@ -38,20 +43,16 @@ def update_data():
     except Exception as e:
         print("❌ 更新失敗:", e)
 
-
-
-# ============================
-# 📊 讀取所有號碼
-# ============================
+# =========================
+# 📊 讀資料
+# =========================
 
 def load_numbers():
-    df = pd.read_csv(DATA_FILE)
-    return df
+    return pd.read_csv(DATA_FILE)
 
-
-# ============================
-# 🎯 預測 API
-# ============================
+# =========================
+# 🎯 預測
+# =========================
 
 @app.route("/predict")
 def predict():
@@ -62,28 +63,21 @@ def predict():
     counter = Counter(nums)
 
     if strategy == "hot":
-        ranked = sorted(counter.items(), key=lambda x: x[1], reverse=True)
-        picks = [n for n, _ in ranked[:6]]
-
+        picks = [n for n,_ in sorted(counter.items(), key=lambda x:x[1], reverse=True)[:6]]
     elif strategy == "cold":
-        ranked = sorted(counter.items(), key=lambda x: x[1])
-        picks = [n for n, _ in ranked[:6]]
-
+        picks = [n for n,_ in sorted(counter.items(), key=lambda x:x[1])[:6]]
     else:
-        picks = random.sample(range(1, 39), 6)
+        picks = random.sample(range(1,39),6)
 
     picks.sort()
-    special = random.randint(1, 8)
-
     return jsonify({
         "first_zone": picks,
-        "second_zone": special
+        "second_zone": random.randint(1,8)
     })
 
-
-# ============================
-# 📈 統計 API
-# ============================
+# =========================
+# 📈 統計
+# =========================
 
 @app.route("/stats")
 def stats():
@@ -91,28 +85,16 @@ def stats():
     nums = df[["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6"]].values.flatten()
     counter = Counter(nums)
 
-    result = []
-    for i in range(1, 39):
-        result.append({
-            "num": i,
-            "count": counter.get(i, 0)
-        })
-
-    return jsonify(result)
-
-
-# ============================
-# 🏠 首頁測試
-# ============================
+    return jsonify([
+        {"num": i, "count": counter.get(i,0)}
+        for i in range(1,39)
+    ])
 
 @app.route("/")
 def home():
-    return "Power Lottery AI API running with official data source"
+    return "Power Lottery AI API running (official open data)"
 
-
-# ============================
-# 🚀 啟動
-# ============================
+# =========================
 
 if __name__ == "__main__":
     update_data()
