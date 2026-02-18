@@ -1,52 +1,28 @@
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
+OFFICIAL_CSV = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/master/powerlotto.csv"
+LOCAL_FILE = "weli_latest.csv"
 
-def auto_update_data():
+def update_data():
     try:
-        url = "https://www.taiwanlottery.com.tw/lotto/powerlotto/history.aspx"
-        headers = {"User-Agent": "Mozilla/5.0"}
+         print("📡 嘗試官方鏡像資料源...")
+        df = pd.read_csv(OFFICIAL_CSV)
 
-        res = requests.get(url, headers=headers, timeout=20)
-        res.encoding = "utf-8"
+        df = df[[
+            "draw_date",
+            "num1","num2","num3","num4","num5","num6","special"
+        ]]
 
-        soup = BeautifulSoup(res.text, "html.parser")
-        table = soup.find("table")
+        df.columns = [
+            "date","獎號1","獎號2","獎號3","獎號4","獎號5","獎號6","第二區"
+        ]
 
-        if not table:
-            print("⚠ 官方頁面改版，暫時沿用舊資料")
-            return
-
-        rows = []
-
-        for tr in table.find_all("tr")[1:]:
-            tds = tr.find_all("td")
-            if len(tds) < 10:
-                continue
-
-            nums = []
-            for i in range(3, 9):
-                if tds[i].text.strip().isdigit():
-                    nums.append(int(tds[i].text.strip()))
-
-            if len(nums) != 6:
-                continue
-
-            second = int(tds[9].text.strip())
-            rows.append(nums + [second])
-
-        if rows:
-            df = pd.DataFrame(
-                rows,
-                columns=["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6","第二區"]
-            )
-            df.to_csv("weli_latest.csv", index=False)
-            print("✅ 最新資料更新完成:", len(df), "期")
-        else:
-            print("⚠ 沒抓到新資料，保留舊CSV")
+        df.to_csv(LOCAL_FILE, index=False)
+        print(f"✅ 成功更新 {len(df)} 期資料")
 
     except Exception as e:
-        print("⚠ 更新失敗，使用舊資料:", e)
+        print("❌ 更新失敗:", e)
 
 
 from flask import Flask, jsonify, request
