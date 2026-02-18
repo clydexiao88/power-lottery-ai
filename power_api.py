@@ -1,116 +1,90 @@
-from flask import Flask, jsonify, request
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import pandas as pd
 import random
 from collections import Counter
+import os
 
 app = Flask(__name__)
+CORS(app)
 
-CSV_PATH = r"C:\Users\Super\Desktop\weli\weli_20260.csv"
+# ===== 讀取 CSV =====
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "weli_20260.csv")
 
-# ---------------------------
-# 載入第一區號碼
-# ---------------------------
-def load_nums():
-    df = pd.read_csv(CSV_PATH)
+df = pd.read_csv(CSV_PATH)
 
-    cols = ["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6"]
-    nums = df[cols].values.flatten().tolist()
+zone_cols = ["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6"]
 
-    return [int(n) for n in nums if not pd.isna(n)]
+nums = df[zone_cols].values.flatten().tolist()
 
+counter = Counter(nums)
 
-# ---------------------------
-# AI 加權選號
-# ---------------------------
-def weighted_pick(nums):
-    counter = Counter(nums)
+ALL_NUMS = list(range(1,39))
 
-    numbers = list(counter.keys())
-    weights = list(counter.values())
+# ===== 工具 =====
 
-    picks = set()
-    while len(picks) < 6:
-        picks.add(random.choices(numbers, weights=weights, k=1)[0])
-
-    return sorted(picks)
+def unique_sample(pool, k):
+    pool = list(set(pool))
+    return sorted(random.sample(pool, k))
 
 
-# ---------------------------
-# 熱號策略（出現最多）
-# ---------------------------
-def hot_pick(nums):
-    counter = Counter(nums)
-    hottest = counter.most_common(6)
-    return sorted([n for n, _ in hottest])
+# ===== 策略 =====
+
+def ai_strategy():
+    weighted = []
+    for n in ALL_NUMS:
+        weighted += [n] * max(counter.get(n,1),1)
+    return unique_sample(weighted, 6)
+
+def hot_strategy():
+    hot = [n for n,_ in counter.most_common(18)]
+    return unique_sample(hot,6)
+
+def cold_strategy():
+    cold = [n for n,_ in counter.most_common()[-18:]]
+    return unique_sample(cold,6)
+
+def random_strategy():
+    return unique_sample(ALL_NUMS,6)
 
 
-# ---------------------------
-# 冷號策略（出現最少）
-# ---------------------------
-def cold_pick(nums):
-    counter = Counter(nums)
-    coldest = sorted(counter.items(), key=lambda x: x[1])[:6]
-    return sorted([n for n, _ in coldest])
+# ===== API =====
 
+@app.route("/")
+def home():
+    return "Power Lottery AI API running with real CSV data"
 
-# ---------------------------
-# 預測 API
-# ---------------------------
 @app.route("/predict")
 def predict():
-    try:
-        strategy = request.args.get("strategy", "ai")
+    strategy = request.args.get("strategy","ai")
 
-        nums = load_nums()
+    if strategy == "ai":
+        nums = ai_strategy()
+    elif strategy == "hot":
+        nums = hot_strategy()
+    elif strategy == "cold":
+        nums = cold_strategy()
+    else:
+        nums = random_strategy()
 
-        if len(nums) == 0:
-            return jsonify({"error": "CSV 無資料"})
+    second_zone = random.randint(1,8)
 
-        if strategy == "ai":
-            first = weighted_pick(nums)
-        elif strategy == "hot":
-            first = hot_pick(nums)
-        elif strategy == "cold":
-            first = cold_pick(nums)
-        else:
-            first = weighted_pick(nums)
+    return jsonify({
+        "first_zone": nums,
+        "second_zone": second_zone
+    })
 
-        second = random.randint(1, 8)
-
-        return jsonify({
-            "first_zone": first,
-            "second_zone": second
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
-
-# ---------------------------
-# 統計 API（圖表用）
-# ---------------------------
 @app.route("/stats")
 def stats():
-    try:
-        nums = load_nums()
-        counter = Counter(nums)
+    return jsonify([
+        {"num":i,"count":counter.get(i,0)}
+        for i in ALL_NUMS
+    ])
 
-        result = []
-        for i in range(1, 39):
-            result.append({
-                "num": i,
-                "count": counter.get(i, 0)
-            })
+# ===== 雲端啟動 =====
 
-        return jsonify(result)
-
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
-
-# ---------------------------
-# 啟動
-# ---------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT",5000))
+    app.run(host="0.0.0.0", port=port)
