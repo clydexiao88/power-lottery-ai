@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:fl_chart/fl_chart.dart';
 
 void main() {
   runApp(const PowerApp());
@@ -14,6 +13,11 @@ class PowerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      title: 'Power Lottery AI',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.red,
+      ),
       home: const HomePage(),
     );
   }
@@ -28,128 +32,112 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String strategy = "ai";
-  List<int> numbers = [];
-  int second = 0;
-  List stats = [];
+
+  List<int> firstZone = [];
+  int secondZone = 0;
+
   bool loading = false;
 
-  final baseUrl = "https://power-lottery-ai.onrender.com";
-
-  Future<void> fetchPredict() async {
+  Future<void> fetchPrediction() async {
     setState(() => loading = true);
 
-    final res = await http.get(
-      Uri.parse("$baseUrl/predict?strategy=$strategy"),
+    final url = Uri.parse(
+      "https://power-lottery-ai.onrender.com/predict?strategy=$strategy",
     );
 
-    final data = jsonDecode(res.body);
+    try {
+      final res = await http.get(url);
 
-    setState(() {
-      numbers = List<int>.from(data["first_zone"]);
-      second = data["second_zone"];
-      loading = false;
-    });
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+
+        setState(() {
+          firstZone = List<int>.from(data["first_zone"]);
+          secondZone = data["second_zone"];
+        });
+      }
+    } catch (e) {
+      debugPrint("連線錯誤: $e");
+    }
+
+    setState(() => loading = false);
   }
 
-  Future<void> fetchStats() async {
-    final res = await http.get(Uri.parse("$baseUrl/stats"));
-    stats = jsonDecode(res.body);
-    setState(() {});
-  }
-
-  Widget ball(int n, Color c) => Container(
-        margin: const EdgeInsets.all(6),
-        width: 55,
-        height: 55,
-        decoration: BoxDecoration(
-          color: c,
-          shape: BoxShape.circle,
+  Widget ball(int num, Color color) {
+    return Container(
+      width: 55,
+      height: 55,
+      margin: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 6,
+            offset: Offset(2, 3),
+          )
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        "$num",
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
         ),
-        child: Center(
-            child: Text("$n",
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold))),
-      );
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("🎯 威力彩 AI 分析系統")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: const Color(0xfff6eef4),
+      appBar: AppBar(
+        title: const Text("🎯 威力彩 AI 分析系統"),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(18),
         child: Column(
           children: [
-            DropdownButton(
+            DropdownButton<String>(
               value: strategy,
               items: const [
-                DropdownMenuItem(value: "ai", child: Text("🧠 AI權重")),
-                DropdownMenuItem(value: "hot", child: Text("🔥 熱號")),
-                DropdownMenuItem(value: "cold", child: Text("❄ 冷號")),
-                DropdownMenuItem(value: "random", child: Text("🎲 隨機")),
+                DropdownMenuItem(value: "ai", child: Text("🧠 AI 權重")),
+                DropdownMenuItem(value: "hot", child: Text("🔥 熱號策略")),
+                DropdownMenuItem(value: "cold", child: Text("❄ 冷號策略")),
+                DropdownMenuItem(value: "random", child: Text("🎲 完全隨機")),
               ],
               onChanged: (v) => setState(() => strategy = v!),
             ),
-
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
 
             ElevatedButton(
-              onPressed: loading ? null : fetchPredict,
-              child: const Text("開始計算"),
+              onPressed: loading ? null : fetchPrediction,
+              style: ElevatedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+              ),
+              child: loading
+                  ? const CircularProgressIndicator()
+                  : const Text("開始計算"),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
 
             Wrap(
               alignment: WrapAlignment.center,
               children:
-                  numbers.map((n) => ball(n, Colors.red)).toList(),
+                  firstZone.map((n) => ball(n, Colors.red)).toList(),
             ),
 
-            if (second != 0) ball(second, Colors.blue),
-
-            const SizedBox(height: 30),
-
-            ElevatedButton(
-              onPressed: fetchStats,
-              child: const Text("📊 查看統計分析"),
-            ),
-
-            const SizedBox(height: 20),
-
-            if (stats.isNotEmpty)
-              SizedBox(
-                height: 300,
-                child: BarChart(
-                  BarChartData(
-                    barGroups: stats.map<BarChartGroupData>((e) {
-                      return BarChartGroupData(
-                        x: e["num"],
-                        barRods: [
-                          BarChartRodData(
-                            toY: e["count"].toDouble(),
-                            width: 5,
-                            color: Colors.deepPurple,
-                          )
-                        ],
-                      );
-                    }).toList(),
-                    titlesData: FlTitlesData(
-                      leftTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: true)),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          interval: 5,
-                          getTitlesWidget: (v, _) =>
-                              Text(v.toInt().toString(),
-                                  style: const TextStyle(fontSize: 10)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+            if (secondZone != 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 18),
+                child: ball(secondZone, Colors.blue),
               ),
           ],
         ),
