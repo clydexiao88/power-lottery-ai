@@ -15,28 +15,37 @@ DATA_FILE = "weli_latest.csv"
 
 def update_data():
     try:
-        print("📡 同步穩定官方鏡像資料庫...")
+        print("📡 同步官方穩定歷史資料庫...")
 
-        url = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/master/data/powerlotto.csv"
+        url = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/main/data/powerlotto.csv"
 
         df = pd.read_csv(url)
 
         df = df.rename(columns={
-            "num1":"獎號1",
-            "num2":"獎號2",
-            "num3":"獎號3",
-            "num4":"獎號4",
-            "num5":"獎號5",
-            "num6":"獎號6",
-            "special":"第二區"
+            "num1": "獎號1",
+            "num2": "獎號2",
+            "num3": "獎號3",
+            "num4": "獎號4",
+            "num5": "獎號5",
+            "num6": "獎號6",
+            "special": "第二區"
         })
 
-        df[["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6","第二區"]].to_csv(DATA_FILE, index=False)
+        df[[
+            "獎號1",
+            "獎號2",
+            "獎號3",
+            "獎號4",
+            "獎號5",
+            "獎號6",
+            "第二區"
+        ]].to_csv("weli_latest.csv", index=False)
 
-        print("✅ 已更新", len(df), "期歷史資料")
+        print(f"✅ 更新完成：{len(df)} 期資料")
 
     except Exception as e:
         print("❌ 更新失敗:", e)
+
 
 # =========================
 # 📊 讀資料
