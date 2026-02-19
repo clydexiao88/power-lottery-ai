@@ -2,66 +2,143 @@ from flask import Flask, jsonify, request
 import pandas as pd
 import random
 from collections import Counter
-import os
+import math
 
 app = Flask(__name__)
 
-DATA_FILE = "weli_latest.csv"
+DATA_URL = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/main/powerlotto.csv"
+LOCAL_FILE = "weli_latest.csv"
 
 
-# 如果沒有資料就用你原本 CSV 當初始資料
-def ensure_data():
-    if not os.path.exists(DATA_FILE):
-        print("⚠ 尚未有自動資料庫，使用初始 CSV")
-        pd.read_csv("weli_20260.csv", encoding="cp950").to_csv(DATA_FILE, index=False)
+# =========================
+# 自動同步真實歷史資料
+# =========================
+
+def sync_latest():
+    print("📡 同步歷史資料庫...")
+    df = pd.read_csv(DATA_URL)
+
+    df = df.rename(columns={
+        "date": "開獎日期",
+        "n1": "獎號1",
+        "n2": "獎號2",
+        "n3": "獎號3",
+        "n4": "獎號4",
+        "n5": "獎號5",
+        "n6": "獎號6",
+        "special": "第二區"
+    })
+
+    df.to_csv(LOCAL_FILE, index=False, encoding="utf-8-sig")
+    print(f"✅ 已更新 {len(df)} 期資料")
 
 
-def load_nums():
-    df = pd.read_csv(DATA_FILE)
-    nums = df[["獎號1","獎號2","獎號3","獎號4","獎號5","獎號6"]].values.flatten()
-    return nums.tolist()
+# =========================
+# 載入歷史號碼
+# =========================
+
+def load_numbers():
+    df = pd.read_csv(LOCAL_FILE)
+
+    nums = []
+    specials = []
+
+    for _, row in df.iterrows():
+        nums.extend([
+            int(row["獎號1"]), int(row["獎號2"]), int(row["獎號3"]),
+            int(row["獎號4"]), int(row["獎號5"]), int(row["獎號6"])
+        ])
+        specials.append(int(row["第二區"]))
+
+    return nums, specials
 
 
-@app.route("/")
-def home():
-    return "Power Lottery AI API running"
+# =========================
+# 軟機率分布（不是亂數）
+# =========================
 
+def softmax(scores):
+    if not scores:
+        return {}
+
+    m = max(scores.values())
+    exps = {k: math.exp(v - m) for k, v in scores.items()}
+    total = sum(exps.values())
+    return {k: exps[k] / total for k in exps}
+
+
+def weighted_pick(prob_map, k):
+    nums = list(prob_map.keys())
+    weights = list(prob_map.values())
+    return random.choices(nums, weights=weights, k=k)
+
+
+# =========================
+# API：統計資料
+# =========================
 
 @app.route("/stats")
 def stats():
-    nums = load_nums()
+    nums, _ = load_numbers()
     counter = Counter(nums)
 
-    return jsonify([
-        {"num": i, "count": counter.get(i, 0)}
-        for i in range(1, 39)
-    ])
+    result = []
+    for i in range(1, 39):
+        result.append({
+            "num": i,
+            "count": counter.get(i, 0)
+        })
 
+    return jsonify(result)
+
+
+# =========================
+# API：預測
+# =========================
 
 @app.route("/predict")
 def predict():
-    strategy = request.args.get("strategy", "random")
+    strategy = request.args.get("strategy", "ai")
 
-    nums = load_nums()
+    nums, specials = load_numbers()
+
     counter = Counter(nums)
 
-    pool = list(range(1, 39))
+    scores = {}
+
+    for n in range(1, 39):
+        scores[n] = counter.get(n, 0)
+
+    probs = softmax(scores)
+
+    if not probs:
+        return jsonify({"error": "資料不足"}), 500
 
     if strategy == "hot":
-        pool = sorted(pool, key=lambda x: counter.get(x, 0), reverse=True)
+        selected = sorted(counter, key=counter.get, reverse=True)[:6]
 
     elif strategy == "cold":
-        pool = sorted(pool, key=lambda x: counter.get(x, 0))
+        selected = sorted(counter, key=counter.get)[:6]
 
-    picks = random.sample(pool[:20], 6)
-    second = random.randint(1, 8)
+    else:
+        selected = sorted(set(weighted_pick(probs, 6)))
+
+        while len(selected) < 6:
+            selected.add(weighted_pick(probs, 1)[0])
+        selected = sorted(selected)
+
+    second_zone = Counter(specials).most_common(1)[0][0]
 
     return jsonify({
-        "first_zone": sorted(picks),
-        "second_zone": second
+        "first_zone": selected,
+        "second_zone": second_zone
     })
 
 
+# =========================
+# 啟動
+# =========================
+
 if __name__ == "__main__":
-    ensure_data()
+    sync_latest()
     app.run(host="0.0.0.0", port=10000)
