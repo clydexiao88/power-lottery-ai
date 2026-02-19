@@ -13,7 +13,7 @@ DATA_FILE = "weli_latest.csv"
 def ensure_data():
     if not os.path.exists(DATA_FILE):
         print("⚠ 尚未有自動資料庫，使用初始 CSV")
-        pd.read_csv("weli_20260.csv").to_csv(DATA_FILE, index=False)
+        pd.read_csv("weli_20260.csv", encoding="cp950").to_csv(DATA_FILE, index=False)
 
 
 def load_nums():
