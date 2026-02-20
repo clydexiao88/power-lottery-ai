@@ -3,42 +3,52 @@ import pandas as pd
 import random
 from collections import Counter
 import math
+import os
+import requests
+from io import StringIO
 
 app = Flask(__name__)
 
-DATA_URL = "https://raw.githubusercontent.com/ycshih/taiwan-lottery-datasets/main/powerlotto.csv"
-LOCAL_FILE = "weli_latest.csv"
+HISTORY_FILE = "weli_history.csv"
+LATEST_FILE = "weli_latest.csv"
+
+DATA_URL = "https://raw.githubusercontent.com/Jeffrey1616/taiwan-lottery-data/master/powerlotto.csv"
 
 
 # =========================
-# 自動同步真實歷史資料
+# 下載並同步完整資料庫
 # =========================
 
 def sync_latest():
-    print("📡 同步歷史資料庫...")
-    df = pd.read_csv(DATA_URL)
+    print("📡 同步完整歷史資料庫...")
 
-    df = df.rename(columns={
-        "date": "開獎日期",
-        "n1": "獎號1",
-        "n2": "獎號2",
-        "n3": "獎號3",
-        "n4": "獎號4",
-        "n5": "獎號5",
-        "n6": "獎號6",
-        "special": "第二區"
-    })
+    r = requests.get(DATA_URL, timeout=20)
+    r.raise_for_status()
 
-    df.to_csv(LOCAL_FILE, index=False, encoding="utf-8-sig")
-    print(f"✅ 已更新 {len(df)} 期資料")
+    df = pd.read_csv(StringIO(r.text))
+
+    df.columns = [
+        "開獎日期","獎號1","獎號2","獎號3",
+        "獎號4","獎號5","獎號6","第二區"
+    ]
+
+    # 存完整歷史
+    df.to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig")
+
+    # 存最近 100 期給快速分析
+    df.tail(100).to_csv(LATEST_FILE, index=False, encoding="utf-8-sig")
+
+    print(f"✅ 歷史期數：{len(df)}")
+    print("🔥 最近 100 期同步完成")
 
 
 # =========================
-# 載入歷史號碼
+# 載入資料
 # =========================
 
-def load_numbers():
-    df = pd.read_csv(LOCAL_FILE)
+def load_numbers(use_latest=True):
+    file = LATEST_FILE if use_latest else HISTORY_FILE
+    df = pd.read_csv(file)
 
     nums = []
     specials = []
@@ -54,84 +64,77 @@ def load_numbers():
 
 
 # =========================
-# 軟機率分布（不是亂數）
+# 機率模型（非亂數）
 # =========================
 
 def softmax(scores):
-    if not scores:
-        return {}
-
     m = max(scores.values())
     exps = {k: math.exp(v - m) for k, v in scores.items()}
-    total = sum(exps.values())
-    return {k: exps[k] / total for k in exps}
+    s = sum(exps.values())
+    return {k: exps[k] / s for k in exps}
 
 
 def weighted_pick(prob_map, k):
-    nums = list(prob_map.keys())
-    weights = list(prob_map.values())
-    return random.choices(nums, weights=weights, k=k)
+    return random.choices(
+        list(prob_map.keys()),
+        list(prob_map.values()),
+        k=k
+    )
 
 
 # =========================
-# API：統計資料
+# 統計 API（近期）
 # =========================
 
 @app.route("/stats")
 def stats():
-    nums, _ = load_numbers()
-    counter = Counter(nums)
+    nums, _ = load_numbers(True)
+    c = Counter(nums)
 
-    result = []
-    for i in range(1, 39):
-        result.append({
-            "num": i,
-            "count": counter.get(i, 0)
-        })
-
-    return jsonify(result)
+    return jsonify([
+        {"num": i, "count": c.get(i, 0)}
+        for i in range(1, 39)
+    ])
 
 
 # =========================
-# API：預測
+# AI 預測（長短期混合）
 # =========================
 
 @app.route("/predict")
 def predict():
     strategy = request.args.get("strategy", "ai")
 
-    nums, specials = load_numbers()
+    recent_nums, specials = load_numbers(True)
+    all_nums, _ = load_numbers(False)
 
-    counter = Counter(nums)
+    recent_c = Counter(recent_nums)
+    long_c = Counter(all_nums)
 
     scores = {}
 
-    for n in range(1, 39):
-        scores[n] = counter.get(n, 0)
+    for i in range(1, 39):
+        scores[i] = recent_c.get(i, 0) * 1.5 + long_c.get(i, 0) * 0.5
 
     probs = softmax(scores)
 
-    if not probs:
-        return jsonify({"error": "資料不足"}), 500
-
     if strategy == "hot":
-        selected = sorted(counter, key=counter.get, reverse=True)[:6]
+        picks = sorted(scores, key=scores.get, reverse=True)[:6]
 
     elif strategy == "cold":
-        selected = sorted(counter, key=counter.get)[:6]
+        picks = sorted(scores, key=scores.get)[:6]
 
     else:
-        selected = sorted(set(weighted_pick(probs, 6)))
+        picks = set(weighted_pick(probs, 6))
+        while len(picks) < 6:
+            picks.add(weighted_pick(probs, 1)[0])
+        picks = sorted(picks)
 
-        while len(selected) < 6:
-            selected.add(weighted_pick(probs, 1)[0])
-        selected = sorted(selected)
-
-    second_zone = Counter(specials).most_common(1)[0][0]
+    second = Counter(specials).most_common(1)[0][0]
 
     return jsonify({
-        "first_zone": selected,
-        "second_zone": second_zone
+        "first_zone": picks,
+        "second_zone": second
     })
 
 
